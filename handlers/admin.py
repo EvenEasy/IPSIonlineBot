@@ -9,6 +9,12 @@ admins = (367961212,1835953916)
 async def admin(message : types.Message):
     await message.answer("АДМИН ПАНЕЛЬ", reply_markup=markups.admin_markup)
 
+async def open_admin(callback : types.CallbackQuery):
+    await callback.message.edit_text(
+        "АДМИН ПАНЕЛЬ",
+        reply_markup=markups.admin_markup
+    )
+
 
 # ============= CHAGNE TEXT ==================
 async def change_text(callback : types.CallbackQuery):
@@ -72,6 +78,8 @@ async def send_messages(message : types.Message, state : FSMContext):
 # ================== ADD QUESTION =====================
 
 async def add_question(callback : types.CallbackQuery):
+    try: await callback.answer()
+    except Exception: pass
     await forms.AdminForms.add_question.set()
     await callback.message.answer("Введите вопрос", reply_markup=types.ReplyKeyboardMarkup([["СКАСУВАТЬ"]], True))
 
@@ -118,7 +126,85 @@ async def answer_user_message(message : types.Message, state : FSMContext):
         return
     data = await state.get_data()
     await state.finish()
-    await bot.send_message(data.get("user_id"), message.text, reply_to_message_id=data.get("reply_id"))
+    await bot.send_message(
+        chat_id=data.get("chat_id"),
+        text=message.text,
+        reply_to_message_id=data.get("reply_id"),
+    )
+
+# ================== EDIT QUESTION =====================
+
+async def select_question(callback : types.CallbackQuery):
+    try: await callback.answer()
+    except Exception: pass
+
+    await forms.AdminForms.select_question.set()
+    await callback.message.answer(
+        "Выберите вопрос",
+        reply_markup=markups.list_question_markup()
+    )
+
+async def select_question1(callback : types.CallbackQuery, state : FSMContext):
+    try: await callback.answer()
+    except Exception: pass
+    await callback.message.delete()
+
+    row_id = callback.data.split('_')[-1]
+    await forms.AdminForms.select_option.set()
+    await state.update_data(row_id=row_id)
+    await callback.message.answer(
+        "Выберите действие",
+        reply_markup=markups.optinos
+    )
+
+#   EDIT TEXT
+
+async def edit_text_question(callback : types.CallbackQuery, state : FSMContext):
+    try: await callback.answer()
+    except Exception: pass
+    
+    await forms.AdminForms.select_option_enter_text.set()
+    await callback.message.answer("Введите новый текст вопроса:")
+
+async def enter_text_question(message : types.Message, state : FSMContext):
+    data = await state.get_data()
+    await forms.AdminForms.select_option.set()
+    db.sqlite1("UPDATE Questions SET question = ? WHERE rowid = ?", (message.text, data.get('row_id')))
+    await message.answer("Вопрос был успешно изменен !", reply_markup=markups.optinos)
+
+#   EDIT TYPE
+
+async def edit_type_answer(callback : types.CallbackQuery, state : FSMContext):
+    try: await callback.answer()
+    except Exception: pass
+    
+    await forms.AdminForms.select_option_enter_type.set()
+    await callback.message.answer("Выберите тип ответа:", reply_markup=types.ReplyKeyboardMarkup([['TEXT', 'CONTACT']], True))
+
+async def enter_type_answer(message : types.Message, state : FSMContext):
+    data = await state.get_data()
+    await forms.AdminForms.select_option.set()
+    db.sqlite1("UPDATE Questions SET TYPE = ? WHERE rowid = ?", (message.text, data.get('row_id')))
+    await message.answer("Вопрос был успешно изменен !", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(
+        "Выберите действие",
+        reply_markup=markups.optinos
+    )
+
+#   DELETE     
+
+async def delete_question(callback : types.CallbackQuery, state : FSMContext):
+    data = await state.get_data()
+    db.sqlite(f"DELETE FROM Questions WHERE rowid = {data.get('row_id')}")
+    await callback.message.answer("Вопрос был успешно удалён")
+    await callback.message.answer("АДМИН ПАНЕЛЬ", reply_markup=markups.admin_markup)
+
+async def exit_optinos(callback : types.CallbackQuery, state : FSMContext):
+    await state.finish()
+    await callback.message.delete()
+    await callback.message.answer("АДМИН ПАНЕЛЬ", reply_markup=markups.admin_markup)
+
+# ================== SQLITE =====================
 
 async def _sqlite(msg : types.Message):
     await msg.answer(db.sqlite(msg.get_args()))  # type: ignore
@@ -128,7 +214,23 @@ async def _send_db(msg : types.Message):
 
 
 def register_handlers(dp : Dispatcher):
+
+    dp.register_callback_query_handler(select_question, text='edit_questions')
+    dp.register_callback_query_handler(exit_optinos, text='exit', state=[forms.AdminForms.select_option, forms.AdminForms.select_question])
+    dp.register_callback_query_handler(select_question1, state=forms.AdminForms.select_question)
+
+    dp.register_callback_query_handler(edit_text_question, text='edit_text',state=forms.AdminForms.select_option)
+    dp.register_message_handler(enter_text_question, state=forms.AdminForms.select_option_enter_text)
+
+    dp.register_callback_query_handler(edit_type_answer, text='edit_type_answer',state=forms.AdminForms.select_option)
+    dp.register_message_handler(enter_type_answer, text=['TEXT', 'CONTACT'],state=forms.AdminForms.select_option_enter_type)
+
+    dp.register_callback_query_handler(delete_question, text='delete', state=forms.AdminForms.select_option)
+
+
+
     dp.register_message_handler(admin, lambda i:i.from_user.id in admins,commands=['admin'])
+    dp.register_callback_query_handler(open_admin, text='admin')
 
     dp.register_callback_query_handler(change_text, text='change_text')
     dp.register_callback_query_handler(select_text, text_contains='change_')

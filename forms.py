@@ -13,4 +13,9 @@ class AdminForms(StatesGroup):
     add_question = State()
     set_type = State()
 
+    select_question = State()
+    select_option = State()
+    select_option_enter_text = State()
+    select_option_enter_type = State()
+
     answer_support = State()
